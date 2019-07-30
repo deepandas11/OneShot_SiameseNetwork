@@ -4,6 +4,7 @@ from PIL import Image
 import random
 import json
 
+
 class DataGenerator():
 
     def __init__(self, dim=(105,105), mode='train',batch_size=32, shuffle=True):
@@ -57,23 +58,23 @@ class DataGenerator():
             anchor_images = self.image_paths[current_alphabet][character]
 
             # Sample 3 images from the character. 2 for +ve pair. 1 for -ve pair
-            image_indices = random.sample(range(0,20), 3)
+            [ind1, ind2, ind3] = random.sample(range(0,20), 3)
 
             # Find a character from the remaining available characters
             other_characters = list(set(available_chars).difference(set([character])))
             character2 = random.sample(other_characters, k=1)[0]
             # Sample one image from the other character
             impostor_images = self.image_paths[current_alphabet][character2]
-            impostor_image_index = random.sample(range(0,20), 1)
+            [imp_ind] = random.sample(range(0,20), 1)
 
             current_path = os.path.join(self.image_folder, current_alphabet)
             # print(current_path, character, image_indices, impostor_image_index)
 
             # Paths to all image files
-            image_file1 = os.path.join(current_path, character, anchor_images[image_indices[0]])
-            image_file2 = os.path.join(current_path, character, anchor_images[image_indices[1]])
-            image_file3 = os.path.join(current_path, character, anchor_images[image_indices[2]])
-            impostor_image_file = os.path.join(current_path, character2, impostor_images[impostor_image_index[0]])
+            image_file1 = os.path.join(current_path, character, anchor_images[ind1])
+            image_file2 = os.path.join(current_path, character, anchor_images[ind2])
+            image_file3 = os.path.join(current_path, character, anchor_images[ind3])
+            impostor_image_file = os.path.join(current_path, character2, impostor_images[imp_ind])
 
             pos_sample = [image_file1, image_file2]
             neg_sample = [image_file3, impostor_image_file]
@@ -86,14 +87,63 @@ class DataGenerator():
         self.current_alphabet_index += 1
         if self.current_alphabet_index >= self.num_alphabets:
             self.current_alphabet_index = 0
-        image_pairs, labels = self.gen_train_data_from_paths(batch_paths=batch_paths, 
+        image_pairs, labels = self.generate_data(batch_paths=batch_paths, 
                                                              label_list=label_list)
 
         return image_pairs, labels
 
-    def gen_train_data_from_paths(self, batch_paths, label_list):
+    def get_eval_batch(self, support_size=10):
+        assert self.mode in ['val','test']
 
-        number_of_pairs = self.batch_size  
+        batch_paths = list()
+        label_list= list()
+
+        current_alphabet = self.alphabets[self.current_alphabet_index]
+        available_characters = list(self.image_paths[current_alphabet].keys())
+
+        if support_size == -1 or (support_size > len(available_characters)):
+            num_support_characters = len(available_characters)
+        else:
+            num_support_characters = support_size
+
+        current_path = os.path.join(self.image_folder, current_alphabet)
+
+
+        anchor_character = random.choice(available_characters)
+        anchor_images = self.image_paths[current_alphabet][anchor_character]
+        [ind1, ind2] = random.sample(range(0,20), 2)
+        image_file1 = os.path.join(current_path, anchor_character, anchor_images[ind1])
+        image_file2 = os.path.join(current_path, anchor_character, anchor_images[ind2])
+
+        pos_pair = [image_file1, image_file2]
+        label_list.append(0)
+        batch_paths.append(pos_pair)
+
+        other_characters = list(set(available_characters).difference(set(list(anchor_character))))
+        impostor_characters = random.sample(other_characters, k=num_support_characters)
+
+        for neg_character in impostor_characters:
+            neg_images = self.image_paths[current_alphabet][neg_character]
+            [imp_ind] = random.sample(range(0,20),1)
+            image_file3 = os.path.join(current_path, neg_character, neg_images[imp_ind]) 
+
+            neg_pair = [image_file1, image_file3]
+            batch_paths.append(neg_pair)
+            label_list.append(1)
+
+        self.current_alphabet_index += 1
+        if self.current_alphabet_index >= self.num_alphabets:
+            self.current_alphabet_index = 0
+
+        image_pairs, labels = self.generate_data(batch_paths, label_list, eval_flag=True)
+
+        return image_pairs, labels
+
+
+    def generate_data(self, batch_paths, label_list, eval_flag=False):
+
+
+        number_of_pairs = len(batch_paths)  
 
         # Empty matrix of dimensions 2 x batch_size x image_size
         # Two batches of images 
@@ -110,6 +160,9 @@ class DataGenerator():
                 image_pairs[j][i,:,:] = image
 
             labels[i] = label_list[i]
+
+        if eval_flag:
+            return image_pairs, labels
 
         random_permute = np.random.permutation(number_of_pairs)
         labels = labels[random_permute]
