@@ -183,7 +183,7 @@ class DataGenerator(keras.utils.Sequence):
 
         # Empty matrix of dimensions 2 x batch_size x image_size
         # Two batches of images 
-        image_pairs = [np.zeros((number_of_pairs, *self.dim)) for i in range(2)]
+        image_pairs = [np.zeros((number_of_pairs, *self.dim, 1)) for i in range(2)]
         labels = np.zeros((number_of_pairs, 1))
 
         for i in range(len(batch_paths)):
@@ -193,7 +193,7 @@ class DataGenerator(keras.utils.Sequence):
                 image = Image.open(pair[j])
                 image = np.asarray(image).astype(np.float64)
                 image = image / image.std() - image.mean()
-                image_pairs[j][i,:,:] = image
+                image_pairs[j][i,:,:,0] = image
 
             labels[i] = label_list[i]
 
@@ -203,6 +203,6 @@ class DataGenerator(keras.utils.Sequence):
         random_permute = np.random.permutation(number_of_pairs)
         labels = labels[random_permute]
         for j in range(2):
-            image_pairs[j][:,:,:] = image_pairs[j][random_permute,:,:]
+            image_pairs[j][:,:,:,:] = image_pairs[j][random_permute,:,:,:]
 
         return image_pairs, labels
