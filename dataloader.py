@@ -3,14 +3,15 @@ import os
 from PIL import Image 
 import random
 import json
+import keras
 
+class DataGenerator(keras.utils.Sequence):
 
-class DataGenerator():
-
-    def __init__(self, dim=(105,105), mode='train',batch_size=32, shuffle=True):
+    def __init__(self, dim=(105,105), mode='train',batch_size=32, shuffle=True,support_size=10):
         self.dim = dim  # Dimension of images
         self.batch_size = batch_size  
         self.shuffle = shuffle 
+        self.support_size = support_size
         self.mode = mode  # Mode of operation 
         if self.mode in ['train','val']:
             self.image_folder = os.path.join('data','images_background')
@@ -38,14 +39,49 @@ class DataGenerator():
             self.num_alphabets = len(self.alphabets)
             self.current_alphabet_index = 0
 
+    def __len__(self):
+        """
+        Number of iterations in each epoch
+        """
+        return len(self.alphabets)
 
-    def get_train_batch(self):
+
+    def __getitem__(self,index):
+        """
+        Return full epoch's worth data as a list of batches
+        If there are 24 alphabets in the fold, there will be 24 batches generated
+        Thus, each epoch will have 24 steps
+        """
+
+        current_alphabet = self.alphabets[index]
+
+        if self.mode in ['test','val']:
+            X,y = self.get_eval_batch(alphabet=current_alphabet,
+                                      support_size=self.support_size)
+            return X,y
+
+        X,y = self.get_train_batch(alphabet=current_alphabet)
+        return X,y
+
+    def on_epoch_end(self):
+        """
+        Shuffles order of alphabets to be fed in as batches
+        """
+        if self.shuffle == True:
+            np.random.shuffle(self.alphabets)
+
+    def get_train_batch(self, alphabet):
+        """
+        Get a batch of image pair paths and labels 
+        The batch has n/2 pairs of images from the same class
+        n/2 pairs of images that belong to different classes.
+        """
 
         batch_paths = list()
         label_list = list()
 
         # Find the current alphabet
-        current_alphabet = self.alphabets[self.current_alphabet_index]
+        current_alphabet = alphabet
         # Find all the characters in this alphabet 
         available_chars = list(self.image_paths[current_alphabet].keys())
 
@@ -84,21 +120,23 @@ class DataGenerator():
             label_list.append(0)
             label_list.append(1)
 
-        self.current_alphabet_index += 1
-        if self.current_alphabet_index >= self.num_alphabets:
-            self.current_alphabet_index = 0
-        image_pairs, labels = self.generate_data(batch_paths=batch_paths, 
-                                                             label_list=label_list)
+        image_pairs, labels = self.generate_data(batch_paths=batch_paths,
+                                                 label_list=label_list)
 
         return image_pairs, labels
 
-    def get_eval_batch(self, support_size=10):
+    def get_eval_batch(self, alphabet, support_size=10):
+        """
+        Generate a support_size sized batch of image pairs and labels
+        This batch fixes an anchor character. Finds one similar character.
+        Batch has 1 positive pair and rest are all negative pairs.
+        """
         assert self.mode in ['val','test']
 
         batch_paths = list()
         label_list= list()
 
-        current_alphabet = self.alphabets[self.current_alphabet_index]
+        current_alphabet = alphabet
         available_characters = list(self.image_paths[current_alphabet].keys())
 
         if support_size == -1 or (support_size > len(available_characters)):
@@ -131,18 +169,16 @@ class DataGenerator():
             batch_paths.append(neg_pair)
             label_list.append(1)
 
-        self.current_alphabet_index += 1
-        if self.current_alphabet_index >= self.num_alphabets:
-            self.current_alphabet_index = 0
-
         image_pairs, labels = self.generate_data(batch_paths, label_list, eval_flag=True)
 
         return image_pairs, labels
 
 
     def generate_data(self, batch_paths, label_list, eval_flag=False):
-
-
+        """
+        This function converts a list of paths to numpy image arrays
+        Enables feeding to Keras Model.
+        """
         number_of_pairs = len(batch_paths)  
 
         # Empty matrix of dimensions 2 x batch_size x image_size
@@ -170,9 +206,3 @@ class DataGenerator():
             image_pairs[j][:,:,:] = image_pairs[j][random_permute,:,:]
 
         return image_pairs, labels
-
-
-
-
-
-
