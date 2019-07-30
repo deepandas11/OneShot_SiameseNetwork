@@ -2,6 +2,8 @@ import os
 import json
 import argparse
 
+from random import sample 
+
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 
@@ -9,41 +11,49 @@ parser.add_argument("--fold", default="train", type=str, help="Determines which 
 parser.add_argument("--save_flag", type=str)
 
 
-def gen_dictionary(fold):
-    data = dict()
-    file_name = ''
-    if fold == "train":
-        base_path = "images_background"
-        file_name = 'train_'
-    else:
-        base_path = "images_evaluation"
-        file_name = 'test_'
+def gen_dictionary(base_path, split_flag):
 
-    class_count = 0
+    data = dict()
 
     for alphabet in os.listdir(base_path):
+        data[alphabet] = dict()
         for character in os.listdir(os.path.join(base_path, alphabet)):
-            for image in os.listdir(os.path.join(base_path, alphabet, character)):
-                character_class = image.split('_')[0]
-                file_path = os.path.join(alphabet, character, image)
-                data[file_path] = character_class
-            class_count += 1
+            character_images = os.path.join(base_path, alphabet, character)
+            data[alphabet][character] = os.listdir(character_images)
 
-    return data, file_name
+    if split_flag:
+        selected_alphabets = list(data.keys())
+        train_alphabets = sample(selected_alphabets, int(0.8*len(selected_alphabets)))
+        train_data = dict()
+
+        for alphabet in train_alphabets:
+            train_data[alphabet] = data[alphabet]
+            data.pop(alphabet)
+
+        return train_data, data 
+
+    return data 
 
 
 def gen_json_file(data, file_name):
-    save_file = file_name+'data.json'
-    with open(save_file, 'w') as f:
+    with open(file_name, 'w') as f:
         json.dump(data, f)
-    print("JSON File Created!")
+    print(f"{file_name} JSON File Created!")
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    data, file_name = gen_dictionary(args.fold)
-    print("Save mode is : ", args.save_flag)
-    if args.save_flag=='save':
-        gen_json_file(data, file_name)
+    if args.fold in ["train", "val"]:
+        train_dict, val_dict = gen_dictionary('images_background', True)
+        if args.save_flag=='save':
+            gen_json_file(train_dict, "train_data.json")
+            gen_json_file(val_dict, "val_data.json")
+        else:
+            print(train_dict.keys(), len(list(train_dict.keys())))
     else:
-        print(data)
+        eval_dict = gen_dictionary('images_evaluation', False)
+        if args.save_flag=='save':
+            gen_json_file(eval_dict, "eval_data.json")
+        else:
+            print(eval_dict.keys())
+
