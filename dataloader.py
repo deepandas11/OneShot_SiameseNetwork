@@ -1,65 +1,125 @@
 import numpy as np
-import keras
 import os
 from PIL import Image 
+import random
+import json
 
+class DataGenerator():
 
-class DataGenerator(keras.utils.Sequence):
-
-    def __init__(self, dim, mode='train',batch_size=32, shuffle=True):
-        self.dim = (105,105)
-        self.batch_size = batch_size
+    def __init__(self, dim=(105,105), mode='train',batch_size=32, shuffle=True):
+        self.dim = dim  # Dimension of images
+        self.batch_size = batch_size  
         self.shuffle = shuffle 
-        self.mode = mode
-        if self.mode = 'train':
-            self.image_path = os.path.join('data','images_background')
-            self.data_file = os.path.join('data','train_data.json')
-            with open(self.data_file, mode='r', encoding='utf-8') as f:
-                self.label_data = json.load(f)
-            self.image_ids = list(self.label_data.keys())
+        self.mode = mode  # Mode of operation 
+        if self.mode in ['train','val']:
+            self.image_folder = os.path.join('data','images_background')
+            if self.mode == 'train':              
+                self.data_file = os.path.join('data','train_data.json')
+                with open(self.data_file, mode='r', encoding='utf-8') as f:
+                    self.image_paths = json.load(f)  # Data dictionary
+                self.alphabets = list(self.image_paths.keys())  # All the alphabets in this fold
+                self.num_alphabets = len(self.alphabets)  # Number of alphabets in this fold
+                self.current_alphabet_index = 0  # Counter variable 
+            else:
+                self.data_file = os.path.join('data', 'val_data.json')
+                with open(self.data_file, mode='r', encoding='utf-8') as f:
+                    self.image_paths = json.load(f)
+                self.alphabets = list(self.image_paths.keys())
+                self.num_alphabets = len(self.alphabets)
+                self.current_alphabet_index = 0
 
         else:
-            self.image_path = os.path.join('data','images_evaluation')
-            self.data_file = os.path.join('data', 'test_data.json')
+            self.image_folder = os.path.join('data', 'images_evaluation')
+            self.data_file = os.path.join('data','eval_data.json')
             with open(self.data_file, mode='r', encoding='utf-8') as f:
-                self.label_data = json.load(f)
-            self.image_ids = list(self.label_data.keys()) # Image paths
+                self.image_paths = json.load(f)
+            self.alphabets = list(self.image_paths.keys())
+            self.num_alphabets = len(self.alphabets)
+            self.current_alphabet_index = 0
 
-        self.on_epoch_end()
 
-    def __len__(self):
-        """Denotes the number of batches per epoch"""
+    def get_train_batch(self):
 
-        return int(np.floor(len(self.image_ids)/ self.batch_size))
+        batch_paths = list()
+        label_list = list()
 
-    def __getitem__(self, index):
-        """Generate one batch of data"""
+        # Find the current alphabet
+        current_alphabet = self.alphabets[self.current_alphabet_index]
+        # Find all the characters in this alphabet 
+        available_chars = list(self.image_paths[current_alphabet].keys())
 
-        # Find indices of a batch size and the image ids/paths
-        indices = self.indexes[index*self.batch_size : (index+1)*self.batch_size]
-        list_image_ids = [self.image_ids[index] for index in indices]
+        # For sampling with replacement. For cases where n_chars < batch_sz
+        sz = self.batch_size//2
+        batch_chars = list(np.random.choice(available_chars, size=sz))
 
-        X,y = self.__data_generation(list_image_ids)
+        for character in batch_chars:
+            # All images of the same character - all positive pairs. 
+            anchor_images = self.image_paths[current_alphabet][character]
 
-        return X,y 
+            # Sample 3 images from the character. 2 for +ve pair. 1 for -ve pair
+            image_indices = random.sample(range(0,20), 3)
 
-    def on_epoch_end(self):
-        self.indexes = np.arange(len(self.image_ids))
-        if self.shuffle == True:
-            np.random.shuffle(self.indexes)
+            # Find a character from the remaining available characters
+            other_characters = list(set(available_chars).difference(set([character])))
+            character2 = random.sample(other_characters, k=1)[0]
+            # Sample one image from the other character
+            impostor_images = self.image_paths[current_alphabet][character2]
+            impostor_image_index = random.sample(range(0,20), 1)
 
-    def __data_generation(self, list_image_ids):
-        """
-        Generates data containing batch_size samples with labels
-        """
+            current_path = os.path.join(self.image_folder, current_alphabet)
+            # print(current_path, character, image_indices, impostor_image_index)
 
-        X = np.empty((self.batch_size, *self.dim))
-        y = np.empty((self.batch_size), dtype = int)
+            # Paths to all image files
+            image_file1 = os.path.join(current_path, character, anchor_images[image_indices[0]])
+            image_file2 = os.path.join(current_path, character, anchor_images[image_indices[1]])
+            image_file3 = os.path.join(current_path, character, anchor_images[image_indices[2]])
+            impostor_image_file = os.path.join(current_path, character2, impostor_images[impostor_image_index[0]])
 
-        for i, ID in enumerate(list_image_ids):
-            image_path = os.path.join(self.image_path, ID)
-            im = Image.open(image_path)
-            x[i,] = np.array(im)
-            y[i] = self.label_data[ID][0]
+            pos_sample = [image_file1, image_file2]
+            neg_sample = [image_file3, impostor_image_file]
 
-        return X, y
+            batch_paths.append(pos_sample)
+            batch_paths.append(neg_sample)
+            label_list.append(0)
+            label_list.append(1)
+
+        self.current_alphabet_index += 1
+        if self.current_alphabet_index >= self.num_alphabets:
+            self.current_alphabet_index = 0
+        image_pairs, labels = self.gen_train_data_from_paths(batch_paths=batch_paths, 
+                                                             label_list=label_list)
+
+        return image_pairs, labels
+
+    def gen_train_data_from_paths(self, batch_paths, label_list):
+
+        number_of_pairs = self.batch_size  
+
+        # Empty matrix of dimensions 2 x batch_size x image_size
+        # Two batches of images 
+        image_pairs = [np.zeros((number_of_pairs, *self.dim)) for i in range(2)]
+        labels = np.zeros((number_of_pairs, 1))
+
+        for i in range(len(batch_paths)):
+            pair = batch_paths[i]
+
+            for j in range(len(pair)):  # j in range(2)
+                image = Image.open(pair[j])
+                image = np.asarray(image).astype(np.float64)
+                image = image / image.std() - image.mean()
+                image_pairs[j][i,:,:] = image
+
+            labels[i] = label_list[i]
+
+        random_permute = np.random.permutation(number_of_pairs)
+        labels = labels[random_permute]
+        for j in range(2):
+            image_pairs[j][:,:,:] = image_pairs[j][random_permute,:,:]
+
+        return image_pairs, labels
+
+
+
+
+
+
