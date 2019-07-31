@@ -7,7 +7,10 @@ import keras
 
 class DataGenerator(keras.utils.Sequence):
 
-    def __init__(self, dim=(105,105), mode='train',batch_size=32, shuffle=True,support_size=10):
+    def __init__(self, dim=(105,105), mode='train',
+                 batch_size=32, shuffle=True,
+                 support_size=10):
+
         self.dim = dim  # Dimension of images
         self.batch_size = batch_size  
         self.shuffle = shuffle 
@@ -117,8 +120,8 @@ class DataGenerator(keras.utils.Sequence):
 
             batch_paths.append(pos_sample)
             batch_paths.append(neg_sample)
-            label_list.append(0)
             label_list.append(1)
+            label_list.append(0)
 
         image_pairs, labels = self.generate_data(batch_paths=batch_paths,
                                                  label_list=label_list)
@@ -154,7 +157,7 @@ class DataGenerator(keras.utils.Sequence):
         image_file2 = os.path.join(current_path, anchor_character, anchor_images[ind2])
 
         pos_pair = [image_file1, image_file2]
-        label_list.append(0)
+        label_list.append(1)
         batch_paths.append(pos_pair)
 
         other_characters = list(set(available_characters).difference(set(list(anchor_character))))
@@ -167,7 +170,7 @@ class DataGenerator(keras.utils.Sequence):
 
             neg_pair = [image_file1, image_file3]
             batch_paths.append(neg_pair)
-            label_list.append(1)
+            label_list.append(0)
 
         image_pairs, labels = self.generate_data(batch_paths, label_list, eval_flag=True)
 
