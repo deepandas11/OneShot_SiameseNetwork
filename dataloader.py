@@ -44,7 +44,7 @@ class DataGenerator(keras.utils.Sequence):
 
     def __len__(self):
         """
-        Number of iterations in each epoch
+        Number of batches in each epoch
         """
         return len(self.alphabets)
 
