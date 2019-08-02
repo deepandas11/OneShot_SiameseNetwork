@@ -1,6 +1,5 @@
 from keras.models import Model
 from keras.layers import Input, Conv2D, Flatten, Dense, MaxPooling2D, Lambda
-from keras.regularizers import l2
 from keras.optimizers import SGD
 
 import keras.backend as K
